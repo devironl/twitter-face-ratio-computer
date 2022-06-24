@@ -36,7 +36,7 @@ Please insert a similarity threshold (suggested: 0.9):
 > 0.9
 
 How many tweets do you want to analyse (max = 3200)?
-> 200
+> 100
 
 200 tweets found
 121 images found
