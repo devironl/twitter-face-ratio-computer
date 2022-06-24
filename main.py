@@ -118,7 +118,7 @@ def get_face_encoding(face):
 
 def get_reference_face_encoding(url):
     """
-        Create a baseline encoding from the first face retrieved on the
+        Create a reference encoding from the first face retrieved on the
         reference image provided by the user
         (Assumes that there is one single face on the image)
     """
@@ -176,13 +176,12 @@ def get_mosaic_and_ratio(images, reference_encoding, threshold):
                 all_encodings.append(face_encoding)
     
     # Compute the similarity with the reference image
-    face_similarities = []
-    for face, encoding in zip(all_faces, all_encodings):
-        face_similarities.append((face, cosine_similarity([reference_encoding], [encoding])[0][0]))
+    all_similarities = cosine_similarity([reference_encoding], all_encodings)[0]
+    face_similarities = list(zip(all_faces, all_similarities))
 
     # Sort the list of images and transform the opacity based on similarity 
     face_similarities.sort(key=lambda x:x[1], reverse=True)
-    sorted_faces = [transform_image_opacity(sim[0], sim[1], threshold) for sim in face_similarities]
+    sorted_faces = [transform_image_opacity(face, similarity, threshold) for face, similarity in face_similarities]
 
     # Compute the ratio : number of faces above threshold divided by number of faces
     similarities_above_threshold = [sim[1] for sim in face_similarities if sim[1] >= threshold]
@@ -205,12 +204,13 @@ if __name__ == "__main__":
    
     # Input data
     twitter_screen_name = input("Please indicate a Twitter screen name to analyse:\n> ")
-    baseline_url = input("Please indicate an URL to the reference face:\n> ")
+    reference_url = input("Please indicate an URL to the reference face:\n> ")
     threshold = float(input("Please insert a similarity threshold (suggested: 0.9):\n> "))
     max_tweets = int(input("How many tweets do you want to analyse (max = 3200)?\n>"))
 
-    # Build baseline embedding
-    baseline_embedding = get_reference_face_encoding(baseline_url)
+
+    # Build reference embedding
+    reference_embedding = get_reference_face_encoding(reference_url)
     
     # Get tweets
     tweets = get_tweets_from_screen_name(twitter_screen_name, max_tweets)
@@ -221,7 +221,7 @@ if __name__ == "__main__":
     print(f"{len(images)} images found")
 
     # Compute the mosaic and ratio
-    final_image, ratio = get_mosaic_and_ratio(images, baseline_embedding, threshold)
+    final_image, ratio = get_mosaic_and_ratio(images, reference_embedding, threshold)
     
     print("\n-------------------------------\n")
 
