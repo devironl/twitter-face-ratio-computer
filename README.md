@@ -7,8 +7,10 @@ This project is a data visualization project  aiming to compute the ratio of app
 ## Workflow
 
 1. Get the *n* latest tweets of a given Twitter account by using the official Twitter API
-2. Download all the images shared in the tweets
-3. Extract all the faces from the images by using [OpenCV](https://pypi.org/project/opencv-python/)
+2. Download all the images and videos shared in the tweets
+3. Extract all the faces from the images and videos by using [OpenCV cascade classifier](https://docs.opencv.org/3.4/db/d28/tutorial_cascade_classifier.html)
+    - For the videos we focus on 1 pane out of 100 in order to lighten the process
+    - We apply a [DBScan](https://scikit-learn.org/stable/modules/generated/sklearn.cluster.DBSCAN.html) clustering on the faces popping out and we keep one face per cluster
 4. Encode the faces based on the [face_recognition](https://pypi.org/project/face-recognition/) library
 5. Sort the faces based on their similarity with the encoding of a reference image
 6. Grey out the faces whose similarity is below a threshold of 0.9 (customisable)
@@ -27,28 +29,41 @@ This project is a data visualization project  aiming to compute the ratio of app
 python main.py
 
 Please indicate a Twitter screen name to analyse:
-> alexanderdecroo
+> BarackObama
 
 Please indicate an URL to the reference face:
-> https://pbs.twimg.com/profile_images/1417706888012177409/bcgrpXJm_400x400.jpg
+> https://pbs.twimg.com/profile_images/1329647526807543809/2SGvnHYV_400x400.jpg
 
 Please insert a similarity threshold (suggested: 0.9):
 > 0.9
 
 How many tweets do you want to analyse (max = 3200)?
-> 100
+> 200
 
+Getting the latest 200 tweets from the user...
 200 tweets found
-121 images found
+
+Getting images and videos URLS...
+68 images and 31 videos found
+
+Extracting faces from images...
+177 faces found on images
+
+Extracting faces from videos...
+78 faces found on videos
+
+Computing ratios and generating mosaic...
 
 -------------------------------
 
-Ratio of faces corresponding to the reference face: 29.93 %
-The mosaic has been generated : examples/alexanderdecroo.png
-```
-The resulting image is a mosaic containing all the faces from the tweets. The faces that are not corresponding to the reference face are grayed out.
+The reference face appears 37 times out of 99 media shared by BarackObama (Ratio: 37.37%)
+The reference face appears 37 times out of 204 faces popping up in the media shared by BarackObama (Ratio: 14.51%)
 
-![alt text](./examples/alexanderdecroo.png "Example")
+The mosaic has been generated : examples/BarackObama.png
+```
+
+
+![alt text](./examples/BarackObama.png "Example")
 
 ## Author
 

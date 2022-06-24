@@ -4,11 +4,12 @@ import math
 import requests
 import numpy as np
 import json
+import uuid
+from multiprocessing import Pool, cpu_count
 import face_recognition
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.cluster import DBSCAN
 from requests_oauthlib import OAuth1
-from multiprocessing import Pool, cpu_count
-
 
 def get_tweets_from_screen_name(screen_name, max_tweets=100):
     """
@@ -65,21 +66,35 @@ def download_image(url):
     except:
         return None
 
-def get_images_from_tweets(tweets):
+def download_video(url):
+    """
+    Download an image based on its URL and returns the image object
+    """
+    r = requests.get(url)
+    path = os.path.join("_temp", f"{str(uuid.uuid4())}.mp4")
+    with open(path, "wb") as out:
+        out.write(r.content)
+    return path
+
+
+def get_images_and_videos_from_tweets(tweets):
     """
     Download all images from a list of tweets
     """
     images_urls = []
+    videos_urls = []
     for tweet in tweets:
-        if "extended_entities" in tweet:
-            images_urls += [media["media_url"] for media in tweet["extended_entities"]["media"] if media["type"] == "photo"]
-        if "extended_entities" in tweet.get("retweeted_status", {}):
-            images_urls += [media["media_url"] for media in tweet["retweeted_status"]["extended_entities"]["media"] if media["type"] == "photo"]
-    pool = Pool(cpu_count())
-    images = pool.map(download_image, images_urls)
-    pool.close()
-    pool.join()
-    return [im for im in images if im is not None]
+
+        medias = tweet.get("extended_entities", {}).get("media", [])
+        medias += tweet.get("retweeted_status", {}).get("extended_entities", {}).get("media", [])
+        for media in medias:
+            if media["type"] == "photo":
+                images_urls.append(media["media_url"])
+            elif media["type"] == "video":
+                variants = [variant for variant in media["video_info"]["variants"] if variant["content_type"] == "video/mp4"]
+                if len(variants) > 0:
+                    videos_urls.append(variants[0]["url"])    
+    return images_urls, videos_urls
 
 
 def get_faces_from_image(image):
@@ -103,6 +118,50 @@ def get_faces_from_image(image):
     for (x, y, w, h) in faces:
         face = image[y:y+h,x:x+w]
         yield face
+
+def get_faces_from_video(video_path):
+    """
+    Retrieve a list of unique faces from a video
+    """
+    cap = cv2.VideoCapture(video_path)
+    i = 0
+    # Get the faces every 100 panes of the video
+    faces = []
+    while(cap.isOpened()):
+        response, img = cap.read()
+        if response == False:
+            break
+        if i % 100 == 0:
+            faces += get_faces_from_image(img)    
+        i += 1
+    cap.release()
+
+    # Embed the faces for allowing clustering
+    all_encodings = []
+    all_faces = []
+    for face in faces:
+        face_encoding = get_face_encoding(face)
+        if face_encoding is not None:
+            all_faces.append(face)
+            all_encodings.append(face_encoding)
+    
+    if len(all_faces) == 0:
+        return []
+    
+    # Apply DBSCAN clustering on the faces to cluster unique faces
+    clustering = DBSCAN(metric="euclidean", n_jobs=10, min_samples=3)
+    clustering.fit(all_encodings)
+    
+    # Get one single face per cluster
+    unique_faces = []
+    furnished_cluster_ids = set()
+   
+    for cluster_id, face in zip(clustering.labels_, all_faces):
+        if cluster_id not in furnished_cluster_ids:
+            unique_faces.append(face)
+            furnished_cluster_ids.add(cluster_id)
+    return unique_faces
+
 
 def get_face_encoding(face):
     """
@@ -131,12 +190,12 @@ def get_reference_face_encoding(url):
     raise Exception("The system didn't detect any face from your reference url")   
         
 
-def transform_image_opacity(image, similarity, threshold):
+def transform_image_opacity(image, similarity, similarity_threshold):
     """
     Decrease the opactiy of the picture if the similarity is below
     a given threshold
     """
-    if similarity < threshold:
+    if similarity < similarity_threshold:
         alpha_coeff = 100
     else:
         alpha_coeff = 255
@@ -145,6 +204,39 @@ def transform_image_opacity(image, similarity, threshold):
     a_channel = np.ones(b_channel.shape, dtype=b_channel.dtype) * alpha_coeff
     image = cv2.merge((b_channel, g_channel, r_channel, a_channel))
     return image
+
+
+
+
+
+def get_faces_from_images_urls(images_urls):
+    """
+    Download images with multiprocessing and get the faces
+    from all the images
+    """
+    pool = Pool(cpu_count())
+    images = pool.map(download_image, images_urls)
+    pool.close()
+    pool.join()
+    faces = []
+    for image in images:
+        faces += get_faces_from_image(image)
+    return faces
+   
+
+def get_faces_from_videos_urls(videos_urls):
+    """
+    Get the faces from all the videos
+    """
+    pool = Pool(cpu_count())
+    video_paths = pool.map(download_video, videos_urls)
+    pool.close()
+    pool.join()
+    faces = []
+    for i, video_path in enumerate(video_paths):
+        faces += get_faces_from_video(video_path)
+        os.remove(video_path)
+    return faces
 
 
 
@@ -162,18 +254,20 @@ def draw_face_mosaic(faces):
 
 
 
-def get_mosaic_and_ratio(images, reference_encoding, threshold):
-    
+def get_mosaic_and_stats(faces, reference_encoding, similarity_threshold):
+    """
+    Build the mosaic of faces by ranking the faces based on their similarity
+    with the reference encoding
+    """
     all_faces = []
     all_encodings = []
     
     # Get all encodings
-    for image in images:
-        for face in get_faces_from_image(image):
-            face_encoding = get_face_encoding(face)
-            if face_encoding is not None:
-                all_faces.append(cv2.resize(face, (100, 100), cv2.INTER_NEAREST))
-                all_encodings.append(face_encoding)
+    for face in faces:
+        face_encoding = get_face_encoding(face)
+        if face_encoding is not None:
+            all_faces.append(cv2.resize(face, (100, 100), cv2.INTER_NEAREST))
+            all_encodings.append(face_encoding)
     
     # Compute the similarity with the reference image
     all_similarities = cosine_similarity([reference_encoding], all_encodings)[0]
@@ -181,19 +275,61 @@ def get_mosaic_and_ratio(images, reference_encoding, threshold):
 
     # Sort the list of images and transform the opacity based on similarity 
     face_similarities.sort(key=lambda x:x[1], reverse=True)
-    sorted_faces = [transform_image_opacity(face, similarity, threshold) for face, similarity in face_similarities]
+    sorted_faces = [transform_image_opacity(face, similarity, similarity_threshold) for face, similarity in face_similarities]
 
     # Compute the ratio : number of faces above threshold divided by number of faces
-    similarities_above_threshold = [sim[1] for sim in face_similarities if sim[1] >= threshold]
-
-    if len(face_similarities) > 0:
-        ratio = len(similarities_above_threshold) / len(face_similarities)
-    else:
-        ratio = 0
+    similarities_above_threshold = [sim[1] for sim in face_similarities if sim[1] >= similarity_threshold]
    
     # Draw the face mosaic
     final_image = draw_face_mosaic(sorted_faces) 
-    return final_image, ratio
+    return final_image, len(similarities_above_threshold), len(all_faces)
+
+def launch_process(twitter_screen_name, reference_url, similarity_threshold, max_tweets):
+    """
+    Launch the full process for one account and one reference image
+    """
+
+    # Build reference embedding
+    reference_embedding = get_reference_face_encoding(reference_url)
+    
+    # Get tweets
+    print(f"\nGetting the latest {max_tweets} tweets from the user...")
+    tweets = get_tweets_from_screen_name(twitter_screen_name, max_tweets)
+    print(f"{len(tweets)} tweets found\n")
+
+    # Get images
+    print("Getting images and videos URLS...")
+    images_urls, videos_urls = get_images_and_videos_from_tweets(tweets)
+    print(f"{len(images_urls)} images and {len(videos_urls)} videos found\n")
+
+    # Extract faces from images urls
+    print("Extracting faces from images...")
+    images_faces = get_faces_from_images_urls(images_urls)
+    print(f"{len(images_faces)} faces found on images\n")
+    print("Extracting faces from videos...")
+    videos_faces = get_faces_from_videos_urls(videos_urls)
+    print(f"{len(videos_faces)} faces found on videos\n")
+
+    faces = images_faces + videos_faces
+
+    # Compute the mosaic and ratio
+    print("Computing ratios and generating mosaic...")
+    final_image, count_reference, count_all_faces = get_mosaic_and_stats(faces, reference_embedding, similarity_threshold)
+    
+    print("\n-------------------------------\n")
+
+    total_medias = len(images_urls) + len(videos_urls)
+    total_faces = len(faces)
+
+    print(f"The reference face appears {count_reference} times out of {len(images_urls) + len(videos_urls)} media shared by {twitter_screen_name} (Ratio: {round(count_reference / total_medias * 100, 2)}%)")
+    print(f"The reference face appears {count_reference} times out of {count_all_faces} faces popping up in the media shared by {twitter_screen_name} (Ratio: {round(count_reference / total_faces * 100, 2)}%)")
+
+    cv2.imwrite(f"examples/{twitter_screen_name}.png", final_image)
+    print(f"\nThe mosaic has been generated : examples/{twitter_screen_name}.png\n\n")
+
+
+
+
    
 
 if __name__ == "__main__":
@@ -204,32 +340,14 @@ if __name__ == "__main__":
    
     # Input data
     twitter_screen_name = input("Please indicate a Twitter screen name to analyse:\n> ")
-    reference_url = input("Please indicate an URL to the reference face:\n> ")
-    threshold = float(input("Please insert a similarity threshold (suggested: 0.9):\n> "))
-    max_tweets = int(input("How many tweets do you want to analyse (max = 3200)?\n>"))
+    reference_url = input("\nPlease indicate an URL to the reference face:\n> ")
+    similarity_threshold = float(input("\nPlease insert a similarity threshold (suggested: 0.9):\n> "))
+    max_tweets = int(input("\nHow many tweets do you want to analyse (max = 3200)?\n> "))
 
-
-    # Build reference embedding
-    reference_embedding = get_reference_face_encoding(reference_url)
+    launch_process(twitter_screen_name, reference_url, similarity_threshold, max_tweets)
     
-    # Get tweets
-    tweets = get_tweets_from_screen_name(twitter_screen_name, max_tweets)
-    print(f"{len(tweets)} tweets found")
 
-    # Get images
-    images = get_images_from_tweets(tweets)
-    print(f"{len(images)} images found")
-
-    # Compute the mosaic and ratio
-    final_image, ratio = get_mosaic_and_ratio(images, reference_embedding, threshold)
     
-    print("\n-------------------------------\n")
-
-    print(f"Ratio of faces corresponding to the reference face: {round(ratio,4)*100} %")
-
-    cv2.imwrite(f"examples/{twitter_screen_name}.png", final_image)
-    print(f"The mosaic has been generated : examples/{twitter_screen_name}.png\n\n")
-
 
 
 
