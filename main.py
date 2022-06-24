@@ -268,6 +268,7 @@ def get_mosaic_and_stats(faces, reference_encoding, similarity_threshold):
         if face_encoding is not None:
             all_faces.append(cv2.resize(face, (100, 100), cv2.INTER_NEAREST))
             all_encodings.append(face_encoding)
+        
     
     # Compute the similarity with the reference image
     all_similarities = cosine_similarity([reference_encoding], all_encodings)[0]
@@ -305,10 +306,10 @@ def launch_process(twitter_screen_name, reference_url, similarity_threshold, max
     # Extract faces from images urls
     print("Extracting faces from images...")
     images_faces = get_faces_from_images_urls(images_urls)
-    print(f"{len(images_faces)} faces found on images\n")
+    print(f"{len(images_faces)} potential faces found on images\n")
     print("Extracting faces from videos...")
     videos_faces = get_faces_from_videos_urls(videos_urls)
-    print(f"{len(videos_faces)} faces found on videos\n")
+    print(f"{len(videos_faces)} potential faces found on videos\n")
 
     faces = images_faces + videos_faces
 
@@ -322,7 +323,7 @@ def launch_process(twitter_screen_name, reference_url, similarity_threshold, max
     total_faces = len(faces)
 
     print(f"The reference face appears {count_reference} times out of {len(images_urls) + len(videos_urls)} media shared by {twitter_screen_name} (Ratio: {round(count_reference / total_medias * 100, 2)}%)")
-    print(f"The reference face appears {count_reference} times out of {count_all_faces} faces popping up in the media shared by {twitter_screen_name} (Ratio: {round(count_reference / total_faces * 100, 2)}%)")
+    print(f"The reference face appears {count_reference} times out of {total_faces} valid faces popping up in the media shared by {twitter_screen_name} (Ratio: {round(count_reference / total_faces * 100, 2)}%)")
 
     cv2.imwrite(f"examples/{twitter_screen_name}.png", final_image)
     print(f"\nThe mosaic has been generated : examples/{twitter_screen_name}.png\n\n")

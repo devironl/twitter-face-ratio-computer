@@ -35,7 +35,7 @@ Please indicate an URL to the reference face:
 > https://pbs.twimg.com/profile_images/1329647526807543809/2SGvnHYV_400x400.jpg
 
 Please insert a similarity threshold (suggested: 0.9):
-> 0.9
+> 0.9 
 
 How many tweets do you want to analyse (max = 3200)?
 > 200
@@ -47,17 +47,17 @@ Getting images and videos URLS...
 68 images and 31 videos found
 
 Extracting faces from images...
-177 faces found on images
+177 potential faces found on images
 
 Extracting faces from videos...
-78 faces found on videos
+78 potential faces found on videos
 
 Computing ratios and generating mosaic...
 
 -------------------------------
 
 The reference face appears 37 times out of 99 media shared by BarackObama (Ratio: 37.37%)
-The reference face appears 37 times out of 204 faces popping up in the media shared by BarackObama (Ratio: 14.51%)
+The reference face appears 37 times out of 255 valid faces popping up in the media shared by BarackObama (Ratio: 14.51%)
 
 The mosaic has been generated : examples/BarackObama.png
 ```
