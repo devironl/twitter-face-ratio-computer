@@ -12,6 +12,7 @@ from sklearn.cluster import DBSCAN
 from requests_oauthlib import OAuth1
 
 def get_tweets_from_screen_name(screen_name, max_tweets=100):
+
     """
     Retrieve the last n tweets (including retweets) for a given user
     (max n = 3200)
@@ -186,7 +187,9 @@ def get_reference_face_encoding(url):
     except:
         raise Exception("The reference URL is not valid or not reachable")
     for face in get_faces_from_image(image):
-        return get_face_encoding(face)
+        encoding = get_face_encoding(face)
+        if encoding is not None:
+            return encoding
     raise Exception("The system didn't detect any face from your reference url")   
         
 
@@ -327,6 +330,12 @@ def launch_process(twitter_screen_name, reference_url, similarity_threshold, max
 
     cv2.imwrite(f"examples/{twitter_screen_name}.png", final_image)
     print(f"\nThe mosaic has been generated : examples/{twitter_screen_name}.png\n\n")
+    return {
+        "total_images": len(images_urls),
+        "total_videos": len(videos_urls),
+        "total_faces": total_faces,
+        "count_reference_face": count_reference
+    }
 
 
 
